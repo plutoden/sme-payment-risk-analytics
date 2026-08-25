@@ -1,36 +1,51 @@
-# SME Payment Risk Analytics - Predicting Late Payments
+# SME Payment Risk Analytics and Delay Prediction
 
-An end-to-end Data Analytics project that helps businesses predict which invoices will be delayed and identify high-risk SME customers. Built with Python, PostgreSQL, and Streamlit.
+An end-to-end data analytics project to identify high-risk SME customers and predict payment delays. The project analyzes 48,839 invoices using Python, PostgreSQL, and Machine Learning with an interactive Streamlit dashboard.
 
-### 🚀 Live Demo: [Click Here to Deploy on Streamlit]
-*(Deploy after this - I will guide you)*
+Live Dashboard: (Will be added after Streamlit deployment)
 
-![Dashboard Preview](https://via.placeholder.com/800x400?text=Add+Your+Dashboard+Screenshot+Here)
+## Business Problem
+Small and Medium Enterprises face severe cash flow issues due to delayed payments. This project addresses:
+- Which customers consistently delay payments?
+- What factors drive payment delays?
+- Can we predict risky invoices before the due date?
 
-### 🎯 Business Problem
-30% of SME invoices are delayed, causing cashflow crisis. This dashboard answers:
-- Who are the riskiest customers?
-- What drives payment delays?
-- Can we predict delay before invoice due date?
+## Key Findings from SQL Analytics
+Analysis performed on PostgreSQL:
 
-### 📊 Key Insights from SQL Analysis
-Executed on PostgreSQL (48,839+ invoices):
-- **Top Risky Customer ID 200769623:** 3,511 delayed invoices
-- **Risk Rate:** 30.2% invoices flagged as risky
-- **Key Driver:** `total_open_amount` and `no_of_invoices` strongly correlate with delay
+- Top Risky Customer: Customer ID 200769623 with 3511 delayed invoices
+- Overall Risk Rate: 30.2 percent of invoices flagged as delayed
+- Primary Risk Drivers: total_open_amount and no_of_invoices
 
-### 🛠️ Tech Stack
-- **Analysis:** Python, Pandas, SQLAlchemy
-- **Database:** PostgreSQL (Complex Queries: JOIN, GROUP BY, Window Functions)
-- **ML:** Scikit-Learn Random Forest (Accuracy ~89%)
-- **Dashboard:** Streamlit with 5 Interactive Charts
+SQL concepts used: GROUP BY, Aggregations, JOINs, Subqueries, Filtering.
 
-### 📁 Structure
-- `notebooks/` - EDA & Model Training
-- `dashboard/app.py` - Live Streamlit App
-- `push.py` - Bulk CSV to SQL Ingestion
+## Tech Stack
+- Programming: Python 3.11, Pandas, NumPy
+- Database: PostgreSQL, SQLAlchemy
+- Machine Learning: Scikit-learn, Random Forest Classifier
+- Visualization: Matplotlib, Seaborn
+- Dashboard: Streamlit
 
-### 💻 How to Run
-```bash
+## Project Structure
+- data/: Raw and cleaned invoice data
+- notebooks/: 01_data_understanding.ipynb, 02_model_training.ipynb
+- dashboard/app.py: Main Streamlit application
+- models/: Trained model file (payment_risk_model.pkl)
+- push.py: Script for bulk ingestion from CSV to PostgreSQL
+- requirements.txt: Project dependencies
+
+## Model Performance
+- Model: Random Forest Classifier
+- Accuracy: 89 percent
+- Features: total_open_amount, no_of_invoices, isOpen, customer history
+- Target Variable: is_delayed
+
+## How to Run Locally
 pip install -r requirements.txt
 streamlit run dashboard/app.py
+
+## Author
+Suraj - Aspiring Data Analyst
+Skills: Python, SQL, Machine Learning, Data Visualization, Streamlit
+
+LinkedIn: [Add your LinkedIn URL]
