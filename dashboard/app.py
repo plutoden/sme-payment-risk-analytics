@@ -8,26 +8,18 @@ st.title("SME Payment Risk Analytics")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_PATH = BASE_DIR / "models" / "risk_model.pkl"
-DATA_PATH_1 = BASE_DIR / "data" / "cleaned_invoices.csv"
-DATA_PATH_2 = BASE_DIR / "data" / "sme_payments.csv"
+DATA_PATH = BASE_DIR / "data" / "processed" / "cleaned.csv"
 
 @st.cache_resource
 def load_model():
     with open(MODEL_PATH, 'rb') as f:
         return pickle.load(f)
 
-model = load_model()
-
 @st.cache_data
 def load_data():
-    if DATA_PATH_1.exists():
-        return pd.read_csv(DATA_PATH_1)
-    elif DATA_PATH_2.exists():
-        return pd.read_csv(DATA_PATH_2)
-    else:
-        # try relative path for streamlit cloud
-        return pd.read_csv("data/cleaned_invoices.csv")
+    return pd.read_csv(DATA_PATH)
 
+model = load_model()
 df = load_data()
 
 tab1, tab2 = st.tabs(["Risk Predictor", "Data Analytics"])
@@ -53,6 +45,4 @@ with tab2:
         st.dataframe(top_customers)
         st.bar_chart(top_customers.set_index('cust_number'))
     else:
-        st.warning("Required columns not found. Showing data overview.")
         st.dataframe(df.head())
-        st.write(df.describe())
