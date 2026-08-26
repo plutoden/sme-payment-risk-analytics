@@ -14,60 +14,57 @@ def find_file(names):
 
 @st.cache_data
 def load_data():
-    p = find_file(["data/cleaned.csv","data/processed/cleaned.csv","../data/cleaned.csv","dashboard/../data/cleaned.csv"])
+    p = find_file(["data/cleaned.csv","data/processed/cleaned.csv","../data/cleaned.csv"])
     return pd.read_csv(p)
 
 @st.cache_resource
 def load_model():
-    # risk_model.pkl ko priority de, model.pkl ko bilkul ignore
-    mp = find_file(["models/risk_model.pkl","../models/risk_model.pkl"])
-    sp = find_file(["models/scaler.pkl","../models/scaler.pkl"])
-    model = joblib.load(mp)
-    scaler = None
-    try:
-        scaler_obj = joblib.load(sp)
-        # scaler ka feature match check
-        if hasattr(scaler_obj, "feature_names_in_"):
-            if list(scaler_obj.feature_names_in_) == list(model.feature_names_in_):
-                scaler = scaler_obj
-    except:
-        scaler = None
-    return model, scaler
+    mp = find_file(["models/risk_model.pkl","../models/risk_model.pkl","models/model.pkl"])
+    return joblib.load(mp)
 
 df = load_data()
-model, scaler = load_model()
+model = load_model()
 expected = list(model.feature_names_in_)
 
 st.title("SME Payment Risk Analytics - V3.0 Pure ML")
-st.success(f"Loaded {df.shape[0]} rows | Real Model: risk_model.pkl | Features: {expected}")
+st.success(f"Data: {df.shape[0]} rows | Model: {type(model).__name__} | Features: {expected}")
 
+# --- SIDEBAR - Fix: amount, month inputs dikhao ---
 st.sidebar.title("Live Risk Scoring")
-st.sidebar.code(f"Model needs:\n{expected}")
 
-inputs = {}
-for col in expected:
-    if col == "total_open_amount":
-        inputs[col] = st.sidebar.number_input(col, value=50000.0)
-    elif col == "posting_month":
-        inputs[col] = st.sidebar.slider(col, 1, 12, 6)
-    elif col == "delay_days":
-        inputs[col] = st.sidebar.slider(col, 0, 180, 30)
-    elif col == "buisness_year":
-        inputs[col] = st.sidebar.number_input(col, value=2020)
-    elif col in ["is_q_end","isOpen","is_delayed","is_open"]:
-        inputs[col] = int(st.sidebar.checkbox(col, value=False))
-    else:
-        inputs[col] = float(df[col].median()) if col in df.columns and pd.api.types.is_numeric_dtype(df[col]) else 0
+amount = st.sidebar.number_input("amount (total_open_amount)", value=50000.0, min_value=0.0)
+month = st.sidebar.slider("month (posting_month)", 1, 12, 6)
+is_open = st.sidebar.checkbox("is_open", value=True)
 
 if st.sidebar.button("Predict Risk", type="primary"):
-    import numpy as np
-    input_df = pd.DataFrame([inputs])[expected]
-    X = scaler.transform(input_df) if scaler else input_df
-    proba = model.predict_proba(X)[0][1]
-    st.sidebar.metric("Default Probability", f"{proba:.2%}")
-    if proba>0.7: st.sidebar.error("🔴 HIGH RISK")
-    elif proba>0.4: st.sidebar.warning("🟡 MEDIUM RISK")
-    else: st.sidebar.success("🟢 LOW RISK")
-    st.sidebar.dataframe(input_df.T)
+    # Exact order me DataFrame banao
+    data = {}
+    for col in expected:
+        if col == "amount": data[col] = amount
+        elif col == "month": data[col] = month
+        elif col == "is_open": data[col] = int(is_open)
+        else: data[col] = 0
+
+    input_df = pd.DataFrame([data])[expected]
+
+    try:
+        proba_arr = model.predict_proba(input_df)[0]
+        # Fix IndexError: agar 1 hi class hai to proba_arr len 1 hoga
+        proba = proba_arr[1] if len(proba_arr) > 1 else proba_arr[0]
+        pred = model.predict(input_df)[0]
+
+        st.sidebar.metric("Default Probability", f"{proba:.2%}")
+        st.sidebar.metric("Prediction", str(pred))
+
+        if proba > 0.7: st.sidebar.error("🔴 HIGH RISK")
+        elif proba > 0.4: st.sidebar.warning("🟡 MEDIUM RISK")
+        else: st.sidebar.success("🟢 LOW RISK")
+
+        st.sidebar.write("Input:")
+        st.sidebar.dataframe(input_df)
+        st.sidebar.write("proba array:", proba_arr)
+    except Exception as e:
+        st.sidebar.error(f"Error: {e}")
 
 st.dataframe(df.head(100))
+st.write("Model classes:", getattr(model, "classes_", "unknown"))
