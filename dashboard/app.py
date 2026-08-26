@@ -1,56 +1,51 @@
-import os, joblib, pandas as pd
 import streamlit as st
+import pandas as pd
+import pickle
+from pathlib import Path
 
-st.set_page_config(layout="wide")
-BASE = os.path.dirname(__file__)
-ROOT = os.path.abspath(os.path.join(BASE, ".."))
-
-def find(p):
-    for b in [BASE, ROOT]:
-        fp = os.path.join(b, p)
-        if os.path.exists(fp): return fp
-    return None
-
-@st.cache_data
-def load_data(): return pd.read_csv(find("data/cleaned.csv"))
-@st.cache_resource
-def load_model(): return joblib.load(find("models/risk_model.pkl"))
-
-df = load_data()
-model = load_model()
+st.set_page_config(page_title="SME Risk V3.0 Pure ML", layout="wide")
 
 st.title("SME Payment Risk Analytics - V3.0 Pure ML")
-st.success(f"Data: {df.shape[0]} | Model: {model.classes_} | Features: {list(model.feature_names_in_)}")
 
-st.sidebar.title("Live Risk Scoring")
-amount = st.sidebar.number_input("Invoice Amount", value=float(df['total_open_amount'].median()))
-month = st.sidebar.slider("Posting Month", 1, 12, 6)
-is_open = st.sidebar.checkbox("is_open (1 = payment pending)", True)
+# Load model
+model_path = Path(__file__).parent.parent / "models" / "model.pkl"
+with open(model_path, "rb") as f:
+    model = pickle.load(f)
 
-if st.sidebar.button("Predict Risk", type="primary"):
-    input_df = pd.DataFrame([{"amount": amount, "month": month, "is_open": int(is_open)}])
+st.success(f"Data: 48839 | Model: {model.classes_} | Features: {list(model.feature_names_in_)}")
+
+# Sidebar Inputs
+st.sidebar.header("Live Risk Scoring")
+total_open_amount = st.sidebar.number_input("Invoice Amount (total_open_amount)", value=17559.64)
+posting_month = st.sidebar.slider("Posting Month", 1, 12, 6)
+delay_days = st.sidebar.number_input("Delay Days", value=0)
+buisness_year = st.sidebar.number_input("Business Year", value=2023)
+is_q_end = st.sidebar.checkbox("Is Quarter End?")
+isOpen = st.sidebar.checkbox("is_open (1 = payment pending)", value=True)
+
+if st.sidebar.button("Predict Risk"):
+    input_dict = {
+        'total_open_amount': total_open_amount,
+        'posting_month': posting_month,
+        'delay_days': delay_days,
+        'buisness_year': buisness_year,
+        'is_q_end': int(is_q_end),
+        'isOpen': int(isOpen)
+    }
+    # Note the typo buisness_year is kept as model was trained with it
+    input_df = pd.DataFrame([input_dict])
     input_df = input_df[list(model.feature_names_in_)]
 
-    # Original model proba
-    proba_arr = model.predict_proba(input_df)[0]
-    raw_proba = proba_arr[1] if len(proba_arr)>1 else proba_arr[0]
+    proba = model.predict_proba(input_df)[0][1]
+    pred = model.predict(input_df)[0]
 
-    # FIX: Realistic scoring - amount ke basis pe normalize
-    # Agar amount > 75th percentile to risk high
-    q75 = df['total_open_amount'].quantile(0.75)
-    q50 = df['total_open_amount'].quantile(0.50)
+    if proba < 0.4:
+        risk = "LOW RISK"
+    elif proba < 0.7:
+        risk = "MEDIUM RISK"
+    else:
+        risk = "HIGH RISK"
 
-    if amount > q75 and is_open: final_proba = 0.85
-    elif amount > q50 and is_open: final_proba = 0.55
-    elif not is_open: final_proba = 0.10
-    else: final_proba = 0.30
-
-    # Dono dikhao
-    st.sidebar.metric("Model Raw Proba", f"{raw_proba:.2%}")
-    st.sidebar.metric("Adjusted Real Risk", f"{final_proba:.2%}")
-
-    if final_proba > 0.7: st.sidebar.error("🔴 HIGH RISK")
-    elif final_proba > 0.4: st.sidebar.warning("🟡 MEDIUM RISK")
-    else: st.sidebar.success("🟢 LOW RISK")
-
-st.dataframe(df.head(100))
+    st.metric("Model Raw Proba", f"{proba*100:.2f}%")
+    st.metric("Final Risk", f"{risk} ({proba*100:.0f}%)")
+    st.write(input_dict)
