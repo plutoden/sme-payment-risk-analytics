@@ -1,71 +1,123 @@
 import streamlit as st
 import pandas as pd
-from pathlib import Path
-import plotly.express as px
 import pickle
-import numpy as np
+import sqlite3
+import os
 
-st.set_page_config(page_title="SME Payment Risk - ML V3", layout="wide")
+st.set_page_config(page_title="SME Payment Risk Analytics", layout="wide")
 st.title("SME Payment Risk Analytics - V3.0 Pure ML")
-st.caption("Live credit risk scoring - 100% ML Model, No Rules")
+st.caption("Live credit risk scoring - 100% ML Model, No Rules + SQL Production Ready")
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_PATH = BASE_DIR / "data" / "processed" / "cleaned.csv"
-MODEL_PATH = BASE_DIR / "models" / "model.pkl"
-SCALER_PATH = BASE_DIR / "models" / "scaler.pkl"
-
+# Load data
 @st.cache_data
 def load_data():
-    return pd.read_csv(DATA_PATH, low_memory=False)
-
-@st.cache_resource
-def load_model():
-    model = pickle.load(open(MODEL_PATH, 'rb'))
-    scaler = pickle.load(open(SCALER_PATH, 'rb'))
-    return model, scaler
+    path = "data/cleaned.csv"
+    if not os.path.exists(path):
+        path = "../data/cleaned.csv"
+    return pd.read_csv(path)
 
 df = load_data()
+
+# Load model
+@st.cache_resource
+def load_model():
+    try:
+        with open("models/model.pkl", "rb") as f:
+            model = pickle.load(f)
+        with open("models/scaler.pkl", "rb") as f:
+            scaler = pickle.load(f)
+        return model, scaler
+    except:
+        try:
+            with open("../models/model.pkl", "rb") as f:
+                model = pickle.load(f)
+            with open("../models/scaler.pkl", "rb") as f:
+                scaler = pickle.load(f)
+            return model, scaler
+        except:
+            return None, None
+
 model, scaler = load_model()
 
-# KPIs
-amount_col = None
-for col in df.columns:
-    if 'amount' in col.lower() or 'open' in col.lower():
-        test = pd.to_numeric(df[col].astype(str).str.replace(r'[^0-9.]','', regex=True), errors='coerce')
-        if test.mean() > 100:
-            amount_col = col
-            df[amount_col] = test
-            break
-
-c1, c2, c3, c4 = st.columns(4)
+# Metrics
+c1,c2,c3,c4 = st.columns(4)
 c1.metric("Total Invoices", f"{len(df):,}")
-c2.metric("Avg Amount", f"₹{df[amount_col].mean():,.0f}")
-c3.metric("Total Customers", f"{df['cust_number'].nunique():,}" if 'cust_number' in df.columns else "1,099")
-c4.metric("Delayed %", "19.8%")
+c2.metric("Avg Amount", f"₹{df['total_open_amount'].mean():,.0f}")
+c3.metric("Total Customers", f"{df['cust_number'].nunique():,}")
+c4.metric("Delayed %", f"{df['is_open'].mean()*100:.1f}%")
 
-st.subheader("Predict Payment Delay - Pure ML Model")
-st.success(f"✅ ML Model Loaded - Trained on {len(df)} invoices")
+tab1, tab2, tab3 = st.tabs(["Risk Predictor (ML)", "Data Analytics", "SQL Scoring (For Interview)"])
 
-colA, colB = st.columns(2)
-with colA:
-    amt = st.number_input("Invoice Amount (₹)", 1000, 10000000, 50000, step=1000)
-with colB:
-    month_dict = {"January":1, "February":2, "March":3, "April":4, "May":5, "June":6, "July":7, "August":8, "September":9, "October":10, "November":11, "December":12}
-    month_name = st.selectbox("Posting Month", list(month_dict.keys()), index=5)
-    month = month_dict[month_name]
-
-is_q_end = 1 if month in [3,6,9,12] else 0
-
-if st.button("Predict Risk", type="primary", use_container_width=True):
-    input_data = np.array([[amt, month, is_q_end]])
-    input_scaled = scaler.transform(input_data)
-    prob = model.predict_proba(input_scaled)[0][1]
-    prob = np.clip(prob, 0.05, 0.95)
-    risk_score = int(prob*100)
-
-    if risk_score >= 50:
-        st.error(f"🔴 HIGH RISK - {risk_score}% chance of delay")
+with tab1:
+    st.subheader("Predict Payment Delay - Pure ML Model")
+    if model:
+        st.success(f"✅ ML Model Loaded - Trained on {len(df)} Invoices")
     else:
-        st.success(f"🟢 LOW RISK - {100-risk_score}% on-time | Risk {risk_score}%")
-    st.progress(float(prob))
-    st.caption(f"Model Input -> Amount: {amt}, Month: {month}, Q-End: {is_q_end} | Scaled: {input_scaled[0].round(2)}")
+        st.error("Model not found")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        amount = st.number_input("Invoice Amount (₹)", value=50000, min_value=1000)
+    with col2:
+        month = st.selectbox("Posting Month", ["January","February","March","April","May","June","July","August","September","October","November","December"])
+        month_map = {"January":1,"February":2,"March":3,"April":4,"May":5,"June":6,"July":7,"August":8,"September":9,"October":10,"November":11,"December":12}
+        month_num = month_map[month]
+
+    if st.button("Predict Risk", use_container_width=True, type="primary"):
+        if model:
+            import numpy as np
+            is_q_end = 1 if month_num in [3,6,9,12] else 0
+            # Features: amount, month, is_q_end
+            features = np.array([[amount, month_num, is_q_end]])
+            if scaler:
+                # If model trained with scaler
+                try:
+                    prob = model.predict_proba(scaler.transform(features))[0][1]
+                except:
+                    prob = model.predict_proba(features)[0][1]
+            else:
+                prob = model.predict_proba(features)[0][1]
+
+            risk_pct = prob*100
+            if risk_pct > 70:
+                st.error(f"🔴 HIGH RISK: {risk_pct:.1f}%")
+            elif risk_pct > 40:
+                st.warning(f"🟡 MEDIUM RISK: {risk_pct:.1f}%")
+            else:
+                st.success(f"🟢 LOW RISK: {risk_pct:.1f}%")
+
+with tab2:
+    st.subheader("Data Analytics")
+    st.bar_chart(df.groupby('posting_month')['is_open'].mean())
+    st.dataframe(df.head(100), use_container_width=True)
+
+with tab3:
+    st.subheader("SQL Based Risk Scoring - Production Approach")
+    st.caption("Same logic jo Bank ke core system me chalega")
+
+    conn = sqlite3.connect(':memory:')
+    df.to_sql('invoices', conn, index=False, if_exists='replace')
+
+    sql_query = """
+    SELECT
+        cust_number,
+        total_open_amount,
+        CASE
+            WHEN total_open_amount > 100000 THEN 85
+            WHEN total_open_amount > 75000 THEN 75
+            WHEN total_open_amount > 50000 THEN 55
+            ELSE 15
+        END as risk_score,
+        CASE
+            WHEN total_open_amount > 100000 THEN 'HIGH'
+            WHEN total_open_amount > 50000 THEN 'MEDIUM'
+            ELSE 'LOW'
+        END as risk_category
+    FROM invoices
+    ORDER BY risk_score DESC
+    LIMIT 100
+    """
+    st.code(sql_query, language='sql')
+    sql_df = pd.read_sql_query(sql_query, conn)
+    st.dataframe(sql_df, use_container_width=True)
+    st.info("Interview Point: Python model for data science, SQL view for production deployment in banking system")
