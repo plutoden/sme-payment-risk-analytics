@@ -8,34 +8,29 @@ st.set_page_config(page_title="SME Payment Risk Analytics", layout="wide")
 st.title("SME Payment Risk Analytics - V3.0 Pure ML")
 st.caption("Live credit risk scoring - 100% ML Model, No Rules + SQL Production Ready")
 
-# Load data
+# Load data - Fixed path for Streamlit Cloud
 @st.cache_data
 def load_data():
-    path = "data/cleaned.csv"
-    if not os.path.exists(path):
-        path = "../data/cleaned.csv"
-    return pd.read_csv(path)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    csv_path = os.path.join(base_dir, "..", "data", "cleaned.csv")
+    return pd.read_csv(csv_path)
 
 df = load_data()
 
-# Load model
+# Load model - Fixed path
 @st.cache_resource
 def load_model():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(base_dir, "..", "models", "model.pkl")
+    scaler_path = os.path.join(base_dir, "..", "models", "scaler.pkl")
     try:
-        with open("models/model.pkl", "rb") as f:
+        with open(model_path, "rb") as f:
             model = pickle.load(f)
-        with open("models/scaler.pkl", "rb") as f:
+        with open(scaler_path, "rb") as f:
             scaler = pickle.load(f)
         return model, scaler
-    except:
-        try:
-            with open("../models/model.pkl", "rb") as f:
-                model = pickle.load(f)
-            with open("../models/scaler.pkl", "rb") as f:
-                scaler = pickle.load(f)
-            return model, scaler
-        except:
-            return None, None
+    except Exception as e:
+        return None, None
 
 model, scaler = load_model()
 
@@ -67,17 +62,11 @@ with tab1:
         if model:
             import numpy as np
             is_q_end = 1 if month_num in [3,6,9,12] else 0
-            # Features: amount, month, is_q_end
             features = np.array([[amount, month_num, is_q_end]])
-            if scaler:
-                # If model trained with scaler
-                try:
-                    prob = model.predict_proba(scaler.transform(features))[0][1]
-                except:
-                    prob = model.predict_proba(features)[0][1]
-            else:
+            try:
+                prob = model.predict_proba(scaler.transform(features))[0][1]
+            except:
                 prob = model.predict_proba(features)[0][1]
-
             risk_pct = prob*100
             if risk_pct > 70:
                 st.error(f"🔴 HIGH RISK: {risk_pct:.1f}%")
@@ -94,10 +83,8 @@ with tab2:
 with tab3:
     st.subheader("SQL Based Risk Scoring - Production Approach")
     st.caption("Same logic jo Bank ke core system me chalega")
-
     conn = sqlite3.connect(':memory:')
     df.to_sql('invoices', conn, index=False, if_exists='replace')
-
     sql_query = """
     SELECT
         cust_number,
